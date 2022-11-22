@@ -165,12 +165,7 @@ if __name__ == "__main__":
     print("Number of workers:", workers)
     pool = Pool(workers)
     pool.map(
-        partial(
-            process_dataset_one,
-            base_dir=args.dir,
-            data_org=data_org,
-            batch_size=args.batch_size,
-        ),
+        partial(process_dataset_one, base_dir=args.dir, data_org=data_org, batch_size=args.batch_size,),
         filtered_datasets,
     )
     pool.close()

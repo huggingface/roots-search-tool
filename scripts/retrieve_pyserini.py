@@ -83,11 +83,7 @@ class BM25:
         self.arguments = []
         for id in tqdm(range(self.num_threads)):
             self.arguments.append(
-                {
-                    "id": id,
-                    "index": index,
-                    "k": k,
-                }
+                {"id": id, "index": index, "k": k,}
             )
 
     def feed_data(self, queries_data, logger=None):
@@ -139,14 +135,10 @@ if __name__ == "__main__":
         default="/home/piktus_huggingface_co/bigscience/scisearch/data/bigscience-data-index/",
     )
     parser.add_argument(
-        "--k",
-        type=int,
-        default=100,
+        "--k", type=int, default=100,
     )
     parser.add_argument(
-        "--lang",
-        required=True,
-        type=str,
+        "--lang", required=True, type=str,
     )
     args = parser.parse_args()
 

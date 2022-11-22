@@ -12,7 +12,7 @@ def save_dataset(dataset_name, base_dir):
     if os.path.isdir(base_dir + dataset_name):
         print(base_dir + dataset_name + " already processed, passing")
         return
-    dataset = load_dataset(dataset_name, use_auth_token=HUGGINGFACE_TOKEN)
+    dataset = load_dataset(dataset_name, use_auth_token=HUGGINGFACE_TOKEN, num_proc=cpu_count())
     dataset.save_to_disk(base_dir + dataset_name)
 
     # The code below doesn't seem to have effect, currently deleting cache manually.
