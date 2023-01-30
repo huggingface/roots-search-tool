@@ -203,11 +203,7 @@ if __name__ == "__main__":
         help="Address of the server, e.g. '12.345.678.910'",
     )
     parser.add_argument(
-        "-p",
-        "--port",
-        type=int,
-        default=8080,
-        help="Port on which to serve ",
+        "-p", "--port", type=int, default=8080, help="Port on which to serve ",
     )
     args = parser.parse_args()
     run(args.index_dir, args.server_address, args.port)
