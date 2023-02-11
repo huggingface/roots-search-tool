@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import string
 import sys
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -37,7 +38,7 @@ class ThreadedPyseriniHTTPServer(ThreadingMixIn, HTTPServer):
                 "/home/piktus_huggingface_co/lumi/dedup/oscar_025/oscar.train.pos2id.pkl", "rb"
             )
         )
-        self.pos2id_list = sorted(pos2id.keys())
+        self.pos2id_list = sorted(self.pos2id.keys())
         self.oscar = load_from_disk("/home/piktus_huggingface_co/lumi/preprocessed_data/oscar-dedup")
 
 
@@ -47,7 +48,7 @@ class ThreadedPyseriniHTTPServer(ThreadingMixIn, HTTPServer):
         """
         pos = bisect_right(self.pos2id_list, pos)
         doc_id = self.pos2id[self.pos2id_list[pos - 1]]
-        return oscar[doc_id]
+        return self.oscar[doc_id]
 
 
 class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -65,10 +66,13 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
 
         text = doc["text"]
         pos = text.find(query)
-        whitespace_idx = [-1] + list(find_whitespace(text))
+        whitespace_idx = [-1] + list(find_whitespace(text)) + [len(text)]
+        # print(whitespace_idx)
         idx = bisect_right(whitespace_idx, pos)
-        start = whitespace_idx[min(0, idx - 50)] + 1)
-        end = whitespace_idx[min(len(whitespace_idx), idx +50)]
+        # print("idx", idx)
+        start = whitespace_idx[max(0, idx - 50)] + 1
+        end = whitespace_idx[min(len(whitespace_idx) - 1, idx + 50)]
+        # print("start: {}, end: {}".format(start, end))
         return text[start:end]
 
 
@@ -96,12 +100,13 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
         k = MAX_DOCS if "k" not in post_data or post_data["k"] is None else int(post_data["k"])
         logging.info("Query: {}".format(query))
 
-        query = args.query.encode("utf-8")
+        query_bytes = query.encode("utf-8")
         tmp_file = "/tmp/fin_{}".format(uuid.uuid4())
-        open(tmp_file, "wb").write(query)
+        open(tmp_file, "wb").write(query_bytes)
+
 
         cmd = (
-            "./target/debug/dedup_dataset count-occurrences "
+            "/home/piktus_huggingface_co/lumi/deduplicate-text-datasets/target/debug/dedup_dataset count-occurrences "
             "--data-file  /home/piktus_huggingface_co/lumi/dedup/oscar_025/oscar.train "
             "--query-file {}".format(tmp_file)
         )
@@ -110,15 +115,15 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
         cmd_result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
         lines = cmd_result.stdout.decode("utf-8").split("\n")
 
+
         prefix = "Found at: "
-        docs = []
+        results = []
         for line in tqdm(lines):
             if line.startswith(prefix):
-                pos = int(line.strip()[len(prefix):])
+                pos = int(line.strip()[len(prefix) :])
                 doc = self.server.get_doc_for_pos(pos)
-                docs.append(doc)
+                results.append(self._process_result(doc, query))
 
-        results = self._process_results(docs)
         payload = {"results": results}
         self._set_response()
         self.wfile.write(json.dumps(payload).encode("utf-8"))
