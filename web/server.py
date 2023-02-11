@@ -58,6 +58,7 @@ class ThreadedPyseriniHTTPServer(ThreadingMixIn, HTTPServer):
             # self.searcher[lang].set_rocchio(debug=True)
             self.analyzer[lang] = Analyzer(self.searcher[lang].object.analyzer)
 
+    """
     def get_phrase_query(self, query, lang):
         phrase_query_builder = get_phrase_query_builder()
         words = query.split()
@@ -69,6 +70,7 @@ class ThreadedPyseriniHTTPServer(ThreadingMixIn, HTTPServer):
             word = terms[0]
             phrase_query_builder.add(JTerm("contents", word))
         return phrase_query_builder.build()
+    """
 
 class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
     def _set_response(self):
@@ -152,8 +154,10 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
                 logging.info("Processing langguage: {}".format(lang))
                 query_terms = set(self.server.analyzer[lang].analyze(query))
                 pharase_query = query
+                """
                 if exact_search:
                     pharase_query = self.server.get_phrase_query(query, analyzer=self.searcher[lang].object.analyzer)
+                """
                 hits_entries, new_highlight_terms = self._process_hits(
                     self.server.searcher[lang].search(pharase_query, k=k), lang, query_terms, highlight_terms
                 )
@@ -161,8 +165,10 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
                 results[lang] = hits_entries
         else:
             query_terms = set(self.server.analyzer[lang].analyze(query))
+            """
             if exact_search:
                 query = self.server.get_phrase_query(query, analyzer=self.searcher[lang].object.analyzer)
+            """
             results, highlight_terms = self._process_hits(
                 self.server.searcher[lang].search(query, k=k), lang, query_terms
             )
