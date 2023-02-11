@@ -12,7 +12,7 @@ query = "ll be another milestone met for sure"
 # export address="http://12.345.678.910:8080"
 
 output = requests.post(
-    os.environ.get("address"),
+    "http://34.105.160.81:8080",
     headers={"Content-type": "application/json"},
     data=json.dumps({"query": query}),
     timeout=60,
