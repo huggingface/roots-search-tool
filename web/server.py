@@ -10,6 +10,7 @@ from bigscience_pii_detect_redact import run_pii
 from huggingface_hub import hf_hub_download
 from pyserini.analysis import Analyzer
 from pyserini.search.lucene import LuceneSearcher
+
 # from pyserini.search.lucene.querybuilder import JTerm, get_phrase_query
 
 LANGUAGES = [
@@ -31,10 +32,11 @@ LANGUAGES = [
 MAX_DOCS = 5
 
 
-
 class LanguageDetector:
     def __init__(self):
-        self.fasstex = fasttext.load_model(hf_hub_download("julien-c/fasttext-language-id", "lid.176.bin"))
+        self.fasstex = fasttext.load_model(
+            hf_hub_download("julien-c/fasttext-language-id", "lid.176.bin")
+        )
 
     def identify_lang(self, query):
         preds = self.fasstex.predict(query)
@@ -72,6 +74,7 @@ class ThreadedPyseriniHTTPServer(ThreadingMixIn, HTTPServer):
         return phrase_query_builder.build()
     """
 
+
 class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
     def _set_response(self):
         self.send_response(200)
@@ -107,14 +110,20 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
         return hits_entries, highlight_terms
 
     def do_GET(self):
-        logging.info("GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers))
+        logging.info(
+            "GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers)
+        )
         self._set_response()
         self.wfile.write("GET request for {}".format(self.path).encode("utf-8"))
 
     def do_POST(self):
         content_length = int(self.headers["Content-Length"])
         post_data = self.rfile.read(content_length).decode("utf-8")
-        logging.info("POST request,\nPath: {}\nHeaders:\n{}\nBody:\n{}\n".format(self.path, self.headers, post_data))
+        logging.info(
+            "POST request,\nPath: {}\nHeaders:\n{}\nBody:\n{}\n".format(
+                self.path, self.headers, post_data
+            )
+        )
 
         post_data = json.loads(post_data)
         if "flag" in post_data and bool(post_data["flag"]):
@@ -128,9 +137,17 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
             exact_search = True
 
         query = post_data["query"]
-        k = MAX_DOCS if "k" not in post_data or post_data["k"] is None else int(post_data["k"])
+        k = (
+            MAX_DOCS
+            if "k" not in post_data or post_data["k"] is None
+            else int(post_data["k"])
+        )
 
-        if "lang" in post_data and post_data["lang"] != "" and post_data["lang"] is not None:
+        if (
+            "lang" in post_data
+            and post_data["lang"] != ""
+            and post_data["lang"] is not None
+        ):
             lang = post_data["lang"]
             score = 1.0
         else:
@@ -138,7 +155,14 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
             if lang not in LANGUAGES:
                 self._set_response()
                 self.wfile.write(
-                    json.dumps({"err": {"type": "unsupported_lang", "meta": {"detected_lang": lang}}}).encode("utf-8")
+                    json.dumps(
+                        {
+                            "err": {
+                                "type": "unsupported_lang",
+                                "meta": {"detected_lang": lang},
+                            }
+                        }
+                    ).encode("utf-8")
                 )
                 return
 
@@ -159,7 +183,10 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
                     pharase_query = self.server.get_phrase_query(query, analyzer=self.searcher[lang].object.analyzer)
                 """
                 hits_entries, new_highlight_terms = self._process_hits(
-                    self.server.searcher[lang].search(pharase_query, k=k), lang, query_terms, highlight_terms
+                    self.server.searcher[lang].search(pharase_query, k=k),
+                    lang,
+                    query_terms,
+                    highlight_terms,
                 )
                 highlight_terms = highlight_terms | new_highlight_terms
                 results[lang] = hits_entries
@@ -180,7 +207,9 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
 
 def run(index_dir, server_address, port):
     logging.basicConfig(level=logging.INFO)
-    httpd = ThreadedPyseriniHTTPServer((server_address, port), PyseriniHTTPRequestHandler, index_dir)
+    httpd = ThreadedPyseriniHTTPServer(
+        (server_address, port), PyseriniHTTPRequestHandler, index_dir
+    )
 
     sa = httpd.socket.getsockname()
     logging.info("Starting httpd on {} port {} ...".format(sa[0], sa[1]))
@@ -209,7 +238,11 @@ if __name__ == "__main__":
         help="Address of the server, e.g. '12.345.678.910'",
     )
     parser.add_argument(
-        "-p", "--port", type=int, default=8080, help="Port on which to serve ",
+        "-p",
+        "--port",
+        type=int,
+        default=8080,
+        help="Port on which to serve ",
     )
     args = parser.parse_args()
     run(args.index_dir, args.server_address, args.port)

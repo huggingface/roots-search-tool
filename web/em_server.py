@@ -135,15 +135,17 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
 
         prefix = "Found at: "
         results = []
-        for line in tqdm(lines):
+        for i, line in tqdm(enumerate(lines)):
+            if i == k:
+                break
             if line.startswith(prefix):
                 pos = int(line.strip()[len(prefix) :])
-                dataset_name, doc_id, doc = self.server.get_doc_for_pos(pos)
+                dataset_name, docid, doc = self.server.get_doc_for_pos(pos)
                 results.append(
                     {
                         "text": self._process_result(doc, query),
                         "ds": dataset_name,
-                        "id": doc_id,
+                        "docid": "bigscience-data/" + dataset_name + "/" + str(docid),
                     }
                 )
 

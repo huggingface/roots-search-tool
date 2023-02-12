@@ -87,7 +87,9 @@ key_pattern = r"(?:^|[\b\s@?,!:;\'\")(.\p{Han}])((?:(?:[A-Za-z]+[\p{Nd}\p{Pd}\/\
 ipv4_pattern = r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}"
 ipv6_pattern = r"(?:[0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,5}(?::[0-9a-fA-F]{1,4}){1,2}|(?:[0-9a-fA-F]{1,4}:){1,4}(?::[0-9a-fA-F]{1,4}){1,3}|(?:[0-9a-fA-F]{1,4}:){1,3}(?::[0-9a-fA-F]{1,4}){1,4}|(?:[0-9a-fA-F]{1,4}:){1,2}(?::[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:(?:(?::[0-9a-fA-F]{1,4}){1,6})|:(?:(?::[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(?::[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(?:ffff(?::0{1,4}){0,1}:){0,1}(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])|(?:[0-9a-fA-F]{1,4}:){1,4}:(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])"
 ip_pattern = (
-    r"(?:^|[\b\s@?,!;:\'\")(.\p{Han}])(" + r"|".join([ipv4_pattern, ipv6_pattern]) + ")(?:$|[\s@,?!;:'\"(.\p{Han}])"
+    r"(?:^|[\b\s@?,!;:\'\")(.\p{Han}])("
+    + r"|".join([ipv4_pattern, ipv6_pattern])
+    + ")(?:$|[\s@,?!;:'\"(.\p{Han}])"
 )
 # https://regex101.com/r/OZdSUu/5
 # email_pattern = r'(?:^|[\s\b\'\"@,?!;:)(.\p{Han}])([^\s@,?!;:)(]+@[^,\s!?;,]+[^\s\b\'\"@,?!;:)(.])(?:$|[\s\b@,?!;:)(.\p{Han}])'
@@ -121,8 +123,12 @@ key_regex = regex.compile(key_pattern, flags=regex.MULTILINE)  # , re.MULTILINE)
 ipv4_regex = regex.compile(ipv4_pattern)
 ipv6_regex = regex.compile(ipv6_pattern)
 ip_regex = regex.compile(ip_pattern, flags=regex.MULTILINE)  # , re.MULTILINE)
-email_regex = regex.compile(email_pattern, flags=regex.MULTILINE | regex.VERBOSE)  # , re.MULTILINE)
-user_regex = regex.compile(user_pattern, flags=regex.MULTILINE | regex.VERBOSE)  # , re.MULTILINE)
+email_regex = regex.compile(
+    email_pattern, flags=regex.MULTILINE | regex.VERBOSE
+)  # , re.MULTILINE)
+user_regex = regex.compile(
+    user_pattern, flags=regex.MULTILINE | regex.VERBOSE
+)  # , re.MULTILINE)
 # phone_regex = regex.compile(phone_pattern, flags=regex.MULTILINE) #, re.MULTILINE)
 # TODO: license
 
@@ -191,7 +197,9 @@ def detect_pii(text, lang, tag_types):
             # TODO: Why does this happen?
             if match.groups():
                 if len(match.groups()) > 1 and match.groups()[1]:
-                    sys.stderr.write("Warning: Found substring matches in the main match.")
+                    sys.stderr.write(
+                        "Warning: Found substring matches in the main match."
+                    )
                     # print(tag)
                     # print(text)
                     # print(match.groups())
@@ -213,7 +221,9 @@ def detect_pii(text, lang, tag_types):
                     #  # TODO: implement
                     #  if is_website(matched_str):
                     #    continue
-                    matches += [(matched_str, match.span(), str(label_pattern), tag, lang)]
+                    matches += [
+                        (matched_str, match.span(), str(label_pattern), tag, lang)
+                    ]
     return matches
 
 
@@ -251,7 +261,11 @@ def run_pii(text, lang):
     if len(matches) > 0:
         # !!! REDACTION HAPPENS HERE !!!
         redacted_str, metadata = redact_pii(text, matches)
-        metadata_out = {"regex metadata": metadata, "original": text, "redacted": redacted_str}
+        metadata_out = {
+            "regex metadata": metadata,
+            "original": text,
+            "redacted": redacted_str,
+        }
         match_set = (redacted_str, metadata_out)
     return match_set
 
@@ -284,5 +298,10 @@ def run_pii_batch(exs, lang):
             old_text.append(text)
             new_text.append(text)
             modified.append(False)
-    result = {"regex_metadata": regex_metadata, "old_text": old_text, "text": new_text, "modified": modified}
+    result = {
+        "regex_metadata": regex_metadata,
+        "old_text": old_text,
+        "text": new_text,
+        "modified": modified,
+    }
     return result
