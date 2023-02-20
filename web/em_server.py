@@ -41,16 +41,16 @@ class ThreadedPyseriniHTTPServer(ThreadingMixIn, HTTPServer):
         logging.info("initializing suffix arrays")
         self.pos2id = pickle.load(
             open(
-                "/home/piktus_huggingface_co/lumi/dedup/roots_en_10/roots_en.train.pos2id.pkl",
+                "/home/piktus_huggingface_co/lumi/dedup/roots_all_10/roots_all.train.pos2id.pkl",
                 "rb",
             )
         )
         self.pos2id_list = sorted(self.pos2id.keys())
         self.datasets = {}
         for dataset in roots_datasets.keys():
-            if dataset.startswith("roots_en"):
+            if dataset.startswith("roots") and (not dataset.startswith("roots-1e")):
                 self.datasets[dataset] = load_from_disk(
-                    "/home/piktus_huggingface_co/lumi/roots_en/" + dataset
+                    "/home/piktus_huggingface_co/lumi/roots_all/" + dataset
                 )["train"]
 
     def get_doc_for_pos(self, pos):
@@ -83,7 +83,11 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
         start = whitespace_idx[max(0, idx - 50)] + 1
         end = whitespace_idx[min(len(whitespace_idx) - 1, idx + 50)]
         # print("start: {}, end: {}".format(start, end))
-        return text[start:end]
+        processed_text = text[start:end]
+        piis = run_pii(processed_text, None)
+        if len(piis[1]) > 0:
+            processed_text = piis[1]["redacted"]
+        return processed_text
 
     def do_GET(self):
         logging.info(
@@ -112,12 +116,9 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
             exact_search = True
 
         query = post_data["query"]
-        k = (
-            MAX_DOCS
-            if "k" not in post_data or post_data["k"] is None
-            else int(post_data["k"])
-        )
         logging.info("Query: {}".format(query))
+        received_results = int(post_data["received_results"])
+        k = int(post_data["k"])
 
         query_bytes = query.encode("utf-8")
         tmp_file = "/tmp/fin_{}".format(uuid.uuid4())
@@ -125,7 +126,7 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
 
         cmd = (
             "/home/piktus_huggingface_co/lumi/deduplicate-text-datasets/target/debug/dedup_dataset count-occurrences "
-            "--data-file  /home/piktus_huggingface_co/lumi/dedup/roots_en_10/roots_en.train "
+            "--data-file  /home/piktus_huggingface_co/lumi/dedup/roots_all_10/roots_all.train "
             "--query-file {}".format(tmp_file)
         )
 
@@ -134,22 +135,30 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
         lines = cmd_result.stdout.decode("utf-8").split("\n")
 
         prefix = "Found at: "
-        results = []
-        for i, line in tqdm(enumerate(lines)):
-            if i == k:
-                break
+        positions = []
+        discards = 0
+        for i, line in tqdm(enumerate(lines[received_results:received_results + k])):
             if line.startswith(prefix):
-                pos = int(line.strip()[len(prefix) :])
-                dataset_name, docid, doc = self.server.get_doc_for_pos(pos)
-                results.append(
-                    {
-                        "text": self._process_result(doc, query),
-                        "ds": dataset_name,
-                        "docid": "bigscience-data/" + dataset_name + "/" + str(docid),
-                    }
-                )
+                positions.append(line)
+            else:
+                discards += 1
+        results = []
 
-        payload = {"results": results}
+        num_results = len(lines) - discards
+        print("Number results", num_results)
+
+        for i, position in tqdm(enumerate(positions)):
+            pos = int(position.strip()[len(prefix) :])
+            dataset_name, docid, doc = self.server.get_doc_for_pos(pos)
+            results.append(
+                {
+                    "text": self._process_result(doc, query),
+                    "ds": dataset_name,
+                    "docid": "bigscience-data/" + dataset_name + "/" + str(docid),
+                }
+            )
+
+        payload = {"results": results, "num_results": num_results, "lang": "all"}
         self._set_response()
         self.wfile.write(json.dumps(payload).encode("utf-8"))
 
