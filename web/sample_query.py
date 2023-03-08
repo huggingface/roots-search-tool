@@ -6,7 +6,7 @@ import requests
 
 pp = pprint.PrettyPrinter(indent=4)
 
-query = "hello world"
+query = "ll be another milestone met for sure"
 
 # run the following in commandline, replace address with your server address:
 # export address="http://12.345.678.910:8080"
@@ -20,4 +20,9 @@ output = requests.post(
 
 results = json.loads(output.text)
 
-pp.pprint(results)
+for result in results["results"]:
+    print(result)
+    print()
+    print()
+
+print("Num results:", len(results["results"]))

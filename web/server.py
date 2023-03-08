@@ -10,7 +10,6 @@ from bigscience_pii_detect_redact import run_pii
 from huggingface_hub import hf_hub_download
 from pyserini.analysis import Analyzer
 from pyserini.search.lucene import LuceneSearcher
-from pyserini.search.lucene.querybuilder import JTerm, get_phrase_query_builder
 
 LANGUAGES = [
     "ar",
@@ -30,17 +29,6 @@ LANGUAGES = [
 
 MAX_DOCS = 5
 
-
-def get_phrase_query(query, lang):
-    phrase_query_builder = get_phrase_query_builder()
-    words = query.split()
-    for i, word in enumerate(words):
-        terms = self.server.analyzer[lang].analyze(word)
-        if len(terms) == 0:
-            continue
-        word = terms[0]
-        phrase_query_builder.add(JTerm("contents", word))
-    return phrase_query_builder.build()
 
 
 class LanguageDetector:
@@ -143,28 +131,27 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
         logging.info("Query: {}".format(query))
         logging.info("Detected language {}, with score {}".format(lang, score))
 
-        results = None
+        results = dict()
+        highlight_terms = set()
         if lang == "all":
             logging.info("Querying all available indices")
-            highlight_terms = set()
-            results = {}
             for lang in LANGUAGES:
                 logging.info("Processing langguage: {}".format(lang))
                 query_terms = set(self.server.analyzer[lang].analyze(query))
-                if exact_search:
-                    query = get_phrase_query(query, lang)
+                pharase_query = query
+
                 hits_entries, new_highlight_terms = self._process_hits(
-                    self.server.searcher[lang].search(query, k=k), lang, query_terms, highlight_terms
+                    self.server.searcher[lang].search(pharase_query, k=k), lang, query_terms, highlight_terms
                 )
                 highlight_terms = highlight_terms | new_highlight_terms
                 results[lang] = hits_entries
         else:
             query_terms = set(self.server.analyzer[lang].analyze(query))
-            if exact_search:
-                query = get_phrase_query(query, lang)
-            results, highlight_terms = self._process_hits(
+
+            hits_entries, highlight_terms = self._process_hits(
                 self.server.searcher[lang].search(query, k=k), lang, query_terms
             )
+            results[lang] = hits_entries
 
         payload = {"results": results, "highlight_terms": list(highlight_terms)}
         self._set_response()
@@ -199,14 +186,10 @@ if __name__ == "__main__":
         "--server_address",
         required=True,
         type=str,
-        help="Address of the server, e.g. 'http://12.345.678.910'",
+        help="Address of the server, e.g. '12.345.678.910'",
     )
     parser.add_argument(
-        "-p",
-        "--port",
-        type=int,
-        default=8080,
-        help="Port on which to serve ",
+        "-p", "--port", type=int, default=8080, help="Port on which to serve ",
     )
     args = parser.parse_args()
     run(args.index_dir, args.server_address, args.port)
