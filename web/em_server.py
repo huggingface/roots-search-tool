@@ -14,7 +14,6 @@ from huggingface_hub import HfApi
 
 import argparse
 import pickle
-import pprint
 import subprocess
 
 from bisect import bisect_right
@@ -22,7 +21,6 @@ from datasets import load_from_disk
 from tqdm import tqdm
 
 
-MAX_DOCS = 5
 hf_api = HfApi()
 roots_datasets = {
     dset.id.split("/")[-1]: dset
@@ -42,16 +40,16 @@ class ThreadedPyseriniHTTPServer(ThreadingMixIn, HTTPServer):
         logging.info("initializing suffix arrays")
         self.pos2id = pickle.load(
             open(
-                "/home/piktus_huggingface_co/lumi/dedup/roots_en_10/roots_en.train.pos2id.pkl",
+                "/home/piktus_huggingface_co/lumi/dedup/roots_all_10/roots_all.train.pos2id.pkl",
                 "rb",
             )
         )
         self.pos2id_list = sorted(self.pos2id.keys())
         self.datasets = {}
         for dataset in roots_datasets.keys():
-            if dataset.startswith("roots_en"):
+            if dataset.startswith("roots_"):
                 self.datasets[dataset] = load_from_disk(
-                    "/home/piktus_huggingface_co/lumi/roots_en/" + dataset
+                    "/home/piktus_huggingface_co/lumi/roots_all/" + dataset
                 )["train"]
 
     def get_doc_for_pos(self, pos):
@@ -59,8 +57,8 @@ class ThreadedPyseriniHTTPServer(ThreadingMixIn, HTTPServer):
         Gets id of the datapoint at position.
         """
         pos = bisect_right(self.pos2id_list, pos)
-        dataset_name, doc_id = self.pos2id[self.pos2id_list[pos - 1]]
-        return dataset_name, doc_id, self.datasets[dataset_name][doc_id]
+        dataset_name, docid = self.pos2id[self.pos2id_list[pos - 1]]
+        return dataset_name, docid, self.datasets[dataset_name][docid]
 
 
 class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -78,12 +76,9 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
         text = doc["text"]
         pos = text.find(query)
         whitespace_idx = [-1] + list(find_whitespace(text)) + [len(text)]
-        # print(whitespace_idx)
         idx = bisect_right(whitespace_idx, pos)
-        # print("idx", idx)
         start = whitespace_idx[max(0, idx - 50)] + 1
         end = whitespace_idx[min(len(whitespace_idx) - 1, idx + 50)]
-        # print("start: {}, end: {}".format(start, end))
         return text[start:end]
 
     def do_GET(self):
@@ -103,22 +98,13 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
         )
 
         post_data = json.loads(post_data)
-        if "flag" in post_data and bool(post_data["flag"]):
-            # TODO: improve reporting
-            self._set_response()
-            self.wfile.write(json.dumps("Flagging OK").encode("utf-8"))
-            return
-
-        if "exact_search" in post_data and post_data["exact_search"]:
-            exact_search = True
-
         query = post_data["query"]
-        k = (
-            MAX_DOCS
-            if "k" not in post_data or post_data["k"] is None
-            else int(post_data["k"])
+        k = post_data["k"]
+        received_results = post_data["received_results"]
+
+        logging.info(
+            "Query: {}, k: {}, received_results: {}".format(query, k, received_results)
         )
-        logging.info("Query: {}".format(query))
 
         query_bytes = query.encode("utf-8")
         tmp_file = "/tmp/fin_{}".format(uuid.uuid4())
@@ -126,29 +112,30 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
 
         cmd = (
             "/home/piktus_huggingface_co/lumi/deduplicate-text-datasets/target/debug/dedup_dataset count-occurrences "
-            "--data-file  /home/piktus_huggingface_co/lumi/dedup/roots_en_10/roots_en.train "
+            "--data-file  /home/piktus_huggingface_co/lumi/dedup/roots_all_10/roots_all.train "
             "--query-file {}".format(tmp_file)
         )
-
         print(cmd)
         cmd_result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
         lines = cmd_result.stdout.decode("utf-8").split("\n")
-
         prefix = "Found at: "
-        results = []
-        for line in tqdm(lines):
-            if line.startswith(prefix):
-                pos = int(line.strip()[len(prefix) :])
-                dataset_name, doc_id, doc = self.server.get_doc_for_pos(pos)
-                results.append(
-                    {
-                        "text": self._process_result(doc, query),
-                        "ds": dataset_name,
-                        "id": doc_id,
-                    }
-                )
+        positions = [
+            int(line[len(prefix) :].strip())
+            for line in lines[received_results : received_results + k]
+            if line.startswith(prefix)
+        ]
 
-        payload = {"results": results}
+        results = []
+        for pos in tqdm(positions):
+            dataset_name, docid, doc = self.server.get_doc_for_pos(pos)
+            results.append(
+                {
+                    "text": self._process_result(doc, query),
+                    "docid": "/" + dataset_name + "/" + str(docid),
+                }
+            )
+
+        payload = {"results": results, "num_results": max(0, len(lines) - 4)}
         self._set_response()
         self.wfile.write(json.dumps(payload).encode("utf-8"))
 
