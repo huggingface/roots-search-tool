@@ -1,5 +1,7 @@
 datasets
+faiss-cpu
 fasttext
 huggingface_hub
 pyserini
 regex
+torch

@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 import string
 import sys
 import uuid
@@ -13,7 +14,6 @@ from huggingface_hub import HfApi
 
 import argparse
 import pickle
-import pprint
 import subprocess
 
 from bisect import bisect_right
@@ -21,13 +21,12 @@ from datasets import load_from_disk
 from tqdm import tqdm
 
 
-MAX_DOCS = 5
 hf_api = HfApi()
 roots_datasets = {
     dset.id.split("/")[-1]: dset
     for dset in hf_api.list_datasets(
         author="bigscience-data",
-        use_auth_token="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",
+        use_auth_token=os.environ.get("BIGSCIENCE_DATA_ACCESS_TOKEN"),
     )
 }
 
@@ -58,8 +57,8 @@ class ThreadedPyseriniHTTPServer(ThreadingMixIn, HTTPServer):
         Gets id of the datapoint at position.
         """
         pos = bisect_right(self.pos2id_list, pos)
-        dataset_name, doc_id = self.pos2id[self.pos2id_list[pos - 1]]
-        return dataset_name, doc_id, self.datasets[dataset_name][doc_id]
+        dataset_name, docid = self.pos2id[self.pos2id_list[pos - 1]]
+        return dataset_name, docid, self.datasets[dataset_name][docid]
 
 
 class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -106,19 +105,13 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
         )
 
         post_data = json.loads(post_data)
-        if "flag" in post_data and bool(post_data["flag"]):
-            # TODO: improve reporting
-            self._set_response()
-            self.wfile.write(json.dumps("Flagging OK").encode("utf-8"))
-            return
-
-        if "exact_search" in post_data and post_data["exact_search"]:
-            exact_search = True
-
         query = post_data["query"]
-        logging.info("Query: {}".format(query))
-        received_results = int(post_data["received_results"])
-        k = int(post_data["k"])
+        k = post_data["k"]
+        received_results = post_data["received_results"]
+
+        logging.info(
+            "Query: {}, k: {}, received_results: {}".format(query, k, received_results)
+        )
 
         query_bytes = query.encode("utf-8")
         tmp_file = "/tmp/fin_{}".format(uuid.uuid4())
@@ -129,36 +122,27 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
             "--data-file  /home/piktus_huggingface_co/lumi/dedup/roots_all_10/roots_all.train "
             "--query-file {}".format(tmp_file)
         )
-
         print(cmd)
         cmd_result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
         lines = cmd_result.stdout.decode("utf-8").split("\n")
-
         prefix = "Found at: "
-        positions = []
-        discards = 0
-        for i, line in tqdm(enumerate(lines[received_results:received_results + k])):
-            if line.startswith(prefix):
-                positions.append(line)
-            else:
-                discards += 1
+        positions = [
+            int(line[len(prefix) :].strip())
+            for line in lines[received_results : received_results + k]
+            if line.startswith(prefix)
+        ]
+
         results = []
-
-        num_results = len(lines) - discards
-        print("Number results", num_results)
-
-        for i, position in tqdm(enumerate(positions)):
-            pos = int(position.strip()[len(prefix) :])
+        for pos in tqdm(positions):
             dataset_name, docid, doc = self.server.get_doc_for_pos(pos)
             results.append(
                 {
                     "text": self._process_result(doc, query),
-                    "ds": dataset_name,
-                    "docid": "bigscience-data/" + dataset_name + "/" + str(docid),
+                    "docid": "/" + dataset_name + "/" + str(docid),
                 }
             )
 
-        payload = {"results": results, "num_results": num_results, "lang": "all"}
+        payload = {"results": results, "num_results": max(0, len(lines) - 4), "lang": "all"}
         self._set_response()
         self.wfile.write(json.dumps(payload).encode("utf-8"))
 
